@@ -20,30 +20,38 @@ def timestamp_float(ts):
     return ts.secs + ts.nsecs / float(1e9)
 
 
-def get_rosbag_stats(bag, event_topic, image_topic=None, flow_topic=None):
+def get_rosbag_stats(bag, event_topic, imu_topic, optitrack_topic, image_topic=None, flow_topic=None):
     num_event_msgs = 0
+    num_imu_msgs = 0
+    num_optitrack_msgs = 0
     num_img_msgs = 0
     num_flow_msgs = 0
     topics = bag.get_type_and_topic_info().topics
-    for topic_name, topic_info in topics.iteritems():
+    for topic_name, topic_info in topics.items():
         if topic_name == event_topic:
             num_event_msgs = topic_info.message_count
             print('Found events topic: {} with {} messages'.format(topic_name, topic_info.message_count))
+        if topic_name == imu_topic:
+            num_imu_msgs = topic_info.message_count
+            print('Found IMU topic: {} with {} messages'.format(topic_name, topic_info.message_count))
+        if topic_name == optitrack_topic:
+            num_optitrack_msgs = topic_info.message_count
+            print('Found OptiTrack topic: {} with {} messages'.format(topic_name, topic_info.message_count))
         if topic_name == image_topic:
             num_img_msgs = topic_info.message_count
             print('Found image topic: {} with {} messages'.format(topic_name, num_img_msgs))
         if topic_name == flow_topic:
             num_flow_msgs = topic_info.message_count
             print('Found flow topic: {} with {} messages'.format(topic_name, num_flow_msgs))
-    return num_event_msgs, num_img_msgs, num_flow_msgs
+    return num_event_msgs, num_imu_msgs, num_optitrack_msgs, num_img_msgs, num_flow_msgs
 
 
 # Inspired by https://github.com/uzh-rpg/rpg_e2vid
-def extract_rosbag(rosbag_path, output_path, event_topic, image_topic=None,
+def extract_rosbag(rosbag_path, output_path, event_topic, imu_topic, optitrack_topic, image_topic=None,
                    flow_topic=None, start_time=None, end_time=None, zero_timestamps=False,
                    packager=hdf5_packager, is_color=False, sensor_size=None):
     ep = packager(output_path)
-    topics = (event_topic, image_topic, flow_topic)
+    topics = (event_topic, imu_topic, optitrack_topic, image_topic, flow_topic)
     event_msg_sum = 0
     num_msgs_between_logs = 25
     first_ts = -1
@@ -53,12 +61,12 @@ def extract_rosbag(rosbag_path, output_path, event_topic, image_topic=None,
         return
     with rosbag.Bag(rosbag_path, 'r') as bag:
         # Look for the topics that are available and save the total number of messages for each topic (useful for the progress bar)
-        num_event_msgs, num_img_msgs, num_flow_msgs = get_rosbag_stats(bag, event_topic, image_topic, flow_topic)
+        num_event_msgs, num_imu_msgs, num_optitrack_msgs, num_img_msgs, num_flow_msgs = get_rosbag_stats(bag, event_topic, imu_topic, optitrack_topic, image_topic, flow_topic)
         # Extract events to h5
         xs, ys, ts, ps = [], [], [], []
         max_buffer_size = 1000000
         ep.set_data_available(num_img_msgs, num_flow_msgs)
-        num_pos, num_neg, last_ts, img_cnt, flow_cnt = 0, 0, 0, 0, 0
+        num_pos, num_neg, last_ts, imu_cnt, optitrack_cnt, img_cnt, flow_cnt = 0, 0, 0, 0, 0, 0, 0
 
         for topic, msg, t in bag.read_messages():
             if first_ts == -1 and topic in topics:
@@ -73,7 +81,30 @@ def extract_rosbag(rosbag_path, output_path, event_topic, image_topic=None,
                     end_time = end_time+start_time
                 t0 = timestamp
 
-            if topic == image_topic:
+            if topic == imu_topic:
+                timestamp = timestamp_float(msg.header.stamp)-(first_ts if zero_timestamps else 0)
+                ax = msg.linear_acceleration.x
+                ay = msg.linear_acceleration.y
+                az = msg.linear_acceleration.z
+                gx = msg.angular_velocity.x
+                gy = msg.angular_velocity.y
+                gz = msg.angular_velocity.z
+                ep.package_imu(timestamp, ax, ay, az, gx, gy, gz)
+                imu_cnt += 1
+
+            elif topic == optitrack_topic:
+                timestamp = timestamp_float(msg.header.stamp)-(first_ts if zero_timestamps else 0)
+                px = msg.pose.position.x
+                py = msg.pose.position.y
+                pz = msg.pose.position.z
+                qx = msg.pose.orientation.x
+                qy = msg.pose.orientation.y
+                qz = msg.pose.orientation.z
+                qw = msg.pose.orientation.w
+                ep.package_optitrack(timestamp, px, py, pz, qx, qy, qz, qw)
+                optitrack_cnt += 1
+
+            elif topic == image_topic:
                 timestamp = timestamp_float(msg.header.stamp)-(first_ts if zero_timestamps else 0)
                 if is_color:
                     image = CvBridge().imgmsg_to_cv2(msg, "bgr8")
@@ -135,13 +166,13 @@ def extract_rosbag(rosbag_path, output_path, event_topic, image_topic=None,
         ep.add_metadata(num_pos, num_neg, last_ts-t0, t0, last_ts, img_cnt, flow_cnt, sensor_size)
 
 
-def extract_rosbags(rosbag_paths, output_dir, event_topic, image_topic, flow_topic,
+def extract_rosbags(rosbag_paths, output_dir, event_topic, imu_topic, optitrack_topic, image_topic, flow_topic,
         zero_timestamps=False, is_color=False, sensor_size=None):
     for path in rosbag_paths:
         bagname = os.path.splitext(os.path.basename(path))[0]
         out_path = os.path.join(output_dir, "{}.h5".format(bagname))
         print("Extracting {} to {}".format(path, out_path))
-        extract_rosbag(path, out_path, event_topic, image_topic=image_topic,
+        extract_rosbag(path, out_path, event_topic, imu_topic, optitrack_topic, image_topic=image_topic,
                        flow_topic=flow_topic, zero_timestamps=zero_timestamps,
                        is_color=is_color, sensor_size=sensor_size)
 
@@ -155,6 +186,8 @@ if __name__ == "__main__":
     parser.add_argument("path", help="ROS bag file to extract or directory containing bags")
     parser.add_argument("--output_dir", default="/tmp/extracted_data", help="Folder where to extract the data")
     parser.add_argument("--event_topic", default="/dvs/events", help="Event topic")
+    parser.add_argument("--imu_topic", default="/dvs/imu", help="IMU topic")
+    parser.add_argument("--optitrack_topic", default="/optitrack/davis", help="OptiTrack topic")
     parser.add_argument("--image_topic", default=None, help="Image topic (if left empty, no images will be collected)")
     parser.add_argument("--flow_topic", default=None, help="Flow topic (if left empty, no flow will be collected)")
     parser.add_argument('--zero_timestamps', action='store_true', help='If true, timestamps will be offset to start at 0')
@@ -175,6 +208,6 @@ if __name__ == "__main__":
     else:
         sensor_size = [args.height, args.width]
 
-    extract_rosbags(rosbag_paths, args.output_dir, args.event_topic, args.image_topic,
+    extract_rosbags(rosbag_paths, args.output_dir, args.event_topic, args.imu_topic, args.optitrack_topic, args.image_topic,
             args.flow_topic, zero_timestamps=args.zero_timestamps, is_color=args.is_color,
             sensor_size=sensor_size)

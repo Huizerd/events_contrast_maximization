@@ -46,6 +46,23 @@ class hdf5_packager(packager):
         self.event_ts = self.events_file.create_dataset("events/ts", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
         self.event_ps = self.events_file.create_dataset("events/ps", (0, ), dtype=np.dtype(np.bool_), maxshape=(None, ), chunks=True)
 
+        self.imu_ts = self.events_file.create_dataset("imu/ts", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+        self.imu_ax = self.events_file.create_dataset("imu/ax", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+        self.imu_ay = self.events_file.create_dataset("imu/ay", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+        self.imu_az = self.events_file.create_dataset("imu/az", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+        self.imu_gx = self.events_file.create_dataset("imu/gx", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+        self.imu_gy = self.events_file.create_dataset("imu/gy", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+        self.imu_gz = self.events_file.create_dataset("imu/gz", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+
+        self.optitrack_ts = self.events_file.create_dataset("optitrack/ts", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+        self.optitrack_px = self.events_file.create_dataset("optitrack/px", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+        self.optitrack_py = self.events_file.create_dataset("optitrack/py", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+        self.optitrack_pz = self.events_file.create_dataset("optitrack/pz", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+        self.optitrack_qx = self.events_file.create_dataset("optitrack/qx", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+        self.optitrack_qy = self.events_file.create_dataset("optitrack/qy", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+        self.optitrack_qz = self.events_file.create_dataset("optitrack/qz", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+        self.optitrack_qw = self.events_file.create_dataset("optitrack/qw", (0, ), dtype=np.dtype(np.float64), maxshape=(None, ), chunks=True)
+
     def append_to_dataset(self, dataset, data):
         dataset.resize(dataset.shape[0] + len(data), axis=0)
         if len(data) == 0:
@@ -57,6 +74,25 @@ class hdf5_packager(packager):
         self.append_to_dataset(self.event_ys, ys)
         self.append_to_dataset(self.event_ts, ts)
         self.append_to_dataset(self.event_ps, ps)
+    
+    def package_imu(self, ts, ax, ay, az, gx, gy, gz):
+        self.append_to_dataset(self.imu_ts, [ts])
+        self.append_to_dataset(self.imu_ax, [ax])
+        self.append_to_dataset(self.imu_ay, [ay])
+        self.append_to_dataset(self.imu_az, [az])
+        self.append_to_dataset(self.imu_gx, [gx])
+        self.append_to_dataset(self.imu_gy, [gy])
+        self.append_to_dataset(self.imu_gz, [gz])
+    
+    def package_optitrack(self, ts, px, py, pz, qx, qy, qz, qw):
+        self.append_to_dataset(self.optitrack_ts, [ts])
+        self.append_to_dataset(self.optitrack_px, [px])
+        self.append_to_dataset(self.optitrack_py, [py])
+        self.append_to_dataset(self.optitrack_pz, [pz])
+        self.append_to_dataset(self.optitrack_qx, [qx])
+        self.append_to_dataset(self.optitrack_qy, [qy])
+        self.append_to_dataset(self.optitrack_qz, [qz])
+        self.append_to_dataset(self.optitrack_qw, [qw])
 
     def package_image(self, image, timestamp, img_idx):
         image_dset = self.events_file.create_dataset("images/image{:09d}".format(img_idx),
